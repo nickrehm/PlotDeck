@@ -8,12 +8,12 @@ import os
 from PyQt5.QtWidgets import QFileDialog, QMessageBox
 from PyQt5.QtGui import QPixmap, QPainter
 
-class LogViewer(QtWidgets.QMainWindow):
+class PlotDeck(QtWidgets.QMainWindow):
 
     def __init__(self):
         super().__init__()
 
-        self.setWindowTitle("Flight Log Viewer")
+        self.setWindowTitle("PlotDeck")
         self.resize(1800, 950)
 
         self.df = None
@@ -538,6 +538,6 @@ class LogViewer(QtWidgets.QMainWindow):
 # Run app
 # -----------------------------
 app = QtWidgets.QApplication(sys.argv)
-viewer = LogViewer()
+viewer = PlotDeck()
 viewer.show()
 sys.exit(app.exec_())

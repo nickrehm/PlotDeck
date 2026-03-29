@@ -2,6 +2,8 @@
 
 - Import a .csv file with rows of time-series data. The first row must contain variable names for each row. Separate/group variables with '.' and this tool will automatically group items for easier navigation through variables.
 
+- Optionally define derived data columns in userDerivedFields.json prior to importing a .csv.
+
 - Select an x-axis variable for all plots. Then select y-axis variables to throw up on each sub plot.
 
 - Save plot sets and load them again later.

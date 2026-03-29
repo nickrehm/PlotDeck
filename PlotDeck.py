@@ -42,6 +42,15 @@ class PlotDeck(QtWidgets.QMainWindow):
         self.x_dropdown.currentIndexChanged.connect(self.update_x_axis)
         control_bar.addWidget(self.x_dropdown)
 
+        # toggle cursor crosshar visibility
+        self.cursor_enabled = True
+        self.cursor_toggle = QtWidgets.QPushButton("Cursor: ON")
+        self.cursor_toggle.setCheckable(True)
+        self.cursor_toggle.setChecked(True)
+        self.cursor_toggle.clicked.connect(self.toggle_cursor)
+        control_bar.addWidget(self.cursor_toggle)
+        self.cursor_idx = None
+
         # Save/load plot set buttons
         self.load_plotset_button = QtWidgets.QPushButton("Load Plot Set")
         self.load_plotset_button.clicked.connect(self.load_plot_set)
@@ -50,7 +59,6 @@ class PlotDeck(QtWidgets.QMainWindow):
         self.save_plotset_button = QtWidgets.QPushButton("Save Plot Set")
         self.save_plotset_button.clicked.connect(self.save_plot_set)
         control_bar.addWidget(self.save_plotset_button)
-        
 
         # -----------------------------
         # Save all plots as PNG
@@ -68,7 +76,11 @@ class PlotDeck(QtWidgets.QMainWindow):
                 plot.setXLink(self.plots[0])
             legend = plot.addLegend(labelTextColor='k')
             legend.setBrush(pg.mkBrush(255, 255, 255, 200))  # white, alpha=200 (semi-transparent)
+            self.add_cursor(plot, i) 
             self.plots.append(plot)
+        
+        self.cursor_label = pg.TextItem(anchor=(0,1), border=pg.mkPen('k'), fill=pg.mkBrush(20,20,20,220))
+        self.plots[0].addItem(self.cursor_label)  # add to first plot
 
         # -----------------------------
         # RIGHT SIDE: trees + FFT + clear buttons
@@ -614,6 +626,115 @@ class PlotDeck(QtWidgets.QMainWindow):
             for plot in self.plots:
                 plot.setXRange(xmin, xmax, padding=0)
 
+    def add_cursor(self, plot, plot_idx):
+        vb = plot.getViewBox()
+
+        vLine = pg.InfiniteLine(angle=90, movable=False)
+        plot.addItem(vLine, ignoreBounds=True)
+
+        # Only create one shared label (still follows cursor)
+        if plot_idx == 0:
+            label = pg.TextItem(anchor=(0, 1), border=pg.mkPen('k'), fill=pg.mkBrush(20,20,20,220))
+            plot.addItem(label)
+            self.cursor_label = label
+            self.cursor_label.setZValue(100)
+        else:
+            label = None
+
+        def mouse_moved(evt):
+            if not getattr(self, "cursor_enabled", True):
+                return
+
+            pos = evt[0]
+            if not plot.sceneBoundingRect().contains(pos):
+                return
+
+            mousePoint = vb.mapSceneToView(pos)
+            x_mouse = mousePoint.x()
+
+            if self.x_data is None or len(self.x_data) == 0:
+                return
+
+            idx = np.searchsorted(self.x_data, x_mouse)
+            idx = np.clip(idx, 0, len(self.x_data) - 1)
+            self.cursor_idx = idx
+            x = self.x_data[idx]
+
+            # Move vertical line in this plot
+            vLine.setPos(x)
+
+            # Move vertical line in all other plots
+            for p in getattr(self, "plots", []):
+                if hasattr(p, "_cursor"):
+                    p._cursor[0].setPos(x)
+
+            # ---- BUILD LABEL FOR ALL PLOTS ----
+            lines = [f"<span style='color:white'><b>x={x:.3f}</b></span>"]
+
+            for i, p in enumerate(getattr(self, "plots", [])):
+                curves = p.listDataItems()
+                if not curves:
+                    continue
+                
+
+                lines.append(f"<span style='color:white'><b>---- Plot {i+1}: ----</b></span>")
+                for curve in curves:
+                    ydata = curve.yData
+                    name = curve.name()
+                    if ydata is None or idx >= len(ydata):
+                        continue
+                    y = ydata[idx]
+
+                    pen = curve.opts.get('pen')
+                    if pen is not None:
+                        qcolor = pen.color()
+                        color_str = f"rgb({qcolor.red()}, {qcolor.green()}, {qcolor.blue()})"
+                    else:
+                        color_str = "black"
+
+                    if name:
+                        lines.append(f"<span style='color:{color_str}'>&nbsp;&nbsp;<b>{name}: {y:.3f}</b></span>")
+                    else:
+                        lines.append(f"<span style='color:{color_str}'>&nbsp;&nbsp;<b>{y:.3f}</b></span>")
+
+            # update the floating label
+            if hasattr(self, "cursor_label"):
+                self.cursor_label.setHtml("<br>".join(lines))
+                # anchor (0,1) means top-left corner of text is positioned at setPos
+                self.cursor_label.setAnchor((0,1))
+
+                # get the x/y in data coordinates
+                x_data = x
+                y_data = mousePoint.y()  # or top of plot: self.plots[0].viewRange()[1][1]
+
+                # map data coords to scene coords
+                scene_pos = vb.mapViewToScene(pg.Point(x_data, y_data))
+
+                # add pixel offset
+                offset_pixels = pg.Point(10, -10)  # 10 px right, 10 px up
+                scene_pos += offset_pixels
+
+                # move label
+                self.cursor_label.setPos(vb.mapSceneToView(scene_pos))
+                self.cursor_label.setZValue(100)
+
+        proxy = pg.SignalProxy(plot.scene().sigMouseMoved, rateLimit=60, slot=mouse_moved)
+        plot._cursor = (vLine, None, label, proxy)
+
+    def toggle_cursor(self):
+        self.cursor_enabled = self.cursor_toggle.isChecked()
+        self.cursor_toggle.setText(f"Cursor: {'ON' if self.cursor_enabled else 'OFF'}")
+
+        for plot in self.plots:
+            if hasattr(plot, "_cursor"):
+                vLine, hLine, label, proxy = plot._cursor
+
+                vLine.setVisible(self.cursor_enabled)
+                # hLine.setVisible(self.cursor_enabled)  # if you re-enable it
+            
+        if hasattr(self, "cursor_label"):
+            self.cursor_label.setVisible(self.cursor_enabled)
+
     # -----------------------------
     # Update X variable
     # -----------------------------
@@ -646,6 +767,7 @@ class PlotDeck(QtWidgets.QMainWindow):
         for plot_idx, tree in enumerate(self.trees):
             plot = self.plots[plot_idx]
             plot.clear()
+            self.add_cursor(plot, plot_idx)
             legend = plot.addLegend(labelTextColor='k')
             legend.setBrush(pg.mkBrush(255, 255, 255, 200))  # white, alpha=200 (semi-transparent)
             color_idx = 0

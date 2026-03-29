@@ -85,10 +85,15 @@ class PlotDeck(QtWidgets.QMainWindow):
             right_panel.addWidget(label)
 
             # FFT button
-            fft_btn = QtWidgets.QPushButton("Show FFT of Plotted Variables")
+            fft_btn = QtWidgets.QPushButton("Show FFT of Current Window")
             fft_btn.clicked.connect(lambda _, idx=i: self.plot_fft_button(idx))
             right_panel.addWidget(fft_btn)
             self.fft_buttons.append(fft_btn)
+
+            # Bode button
+            bode_btn = QtWidgets.QPushButton("Show Bode of Current Window (Setpoint → Measurement)")
+            bode_btn.clicked.connect(lambda _, idx=i: self.plot_bode_button(idx))
+            right_panel.addWidget(bode_btn)
 
             # Clear button
             clear_btn = QtWidgets.QPushButton("Clear Selection")
@@ -187,6 +192,199 @@ class PlotDeck(QtWidgets.QMainWindow):
         fft_plot.setLabel('bottom', 'Frequency', units='Hz')
         fft_plot.setLabel('left', 'Magnitude')
         fft_win.show()
+
+    # -----------------------------
+    # Plot bode button
+    # -----------------------------
+    def plot_bode_button(self, plot_idx):
+        plot = self.plots[plot_idx]
+        curves = plot.listDataItems()
+
+        if len(curves) < 2:
+            QMessageBox.warning(self, "Error", "Need at least 2 plotted signals.")
+            return
+
+        # -----------------------------------
+        # Prompt user to pick setpoint + measurement
+        # -----------------------------------
+        names = [c.name() for c in curves if c.name() is not None]
+
+        if len(names) < 2:
+            QMessageBox.warning(self, "Error", "Curves must have names.")
+            return
+
+        setpoint_name, ok1 = QtWidgets.QInputDialog.getItem(
+            self, "Select Setpoint", "Setpoint signal:", names, 0, False
+        )
+        if not ok1:
+            return
+
+        measurement_name, ok2 = QtWidgets.QInputDialog.getItem(
+            self, "Select Measurement", "Measurement signal:", names, 1, False
+        )
+        if not ok2:
+            return
+
+        if setpoint_name == measurement_name:
+            QMessageBox.warning(self, "Error", "Setpoint and measurement must differ.")
+            return
+
+        # Get curves
+        setpoint_curve = next(c for c in curves if c.name() == setpoint_name)
+        measurement_curve = next(c for c in curves if c.name() == measurement_name)
+
+        # -----------------------------------
+        # Extract visible window
+        # -----------------------------------
+        view = plot.getViewBox()
+        xmin, xmax = view.viewRange()[0]
+        mask = (self.x_data >= xmin) & (self.x_data <= xmax)
+
+        x = self.x_data[mask]
+        u = setpoint_curve.yData[mask]
+        y = measurement_curve.yData[mask]
+
+        if len(x) < 64:
+            QMessageBox.warning(self, "Error", "Not enough data in visible window.")
+            return
+
+        dt = np.mean(np.diff(x))
+        fs = 1.0 / dt
+
+        # -----------------------------------
+        # Welch parameters
+        # -----------------------------------
+        nperseg = min(1024, len(x))
+        noverlap = nperseg // 2
+        step = nperseg - noverlap
+
+        window = np.hanning(nperseg)
+
+        Suu = None
+        Syy = None
+        Syu = None
+
+        count = 0
+
+        # -----------------------------------
+        # Segment loop (Welch averaging)
+        # -----------------------------------
+        for start in range(0, len(x) - nperseg + 1, step):
+            u_seg = u[start:start+nperseg]
+            y_seg = y[start:start+nperseg]
+
+            # Detrend
+            u_seg = u_seg - np.mean(u_seg)
+            y_seg = y_seg - np.mean(y_seg)
+
+            # Window
+            u_seg *= window
+            y_seg *= window
+
+            # FFT
+            U = np.fft.rfft(u_seg)
+            Y = np.fft.rfft(y_seg)
+
+            # Spectra
+            Suu_seg = U * np.conj(U)
+            Syy_seg = Y * np.conj(Y)
+            Syu_seg = Y * np.conj(U)
+
+            if Suu is None:
+                Suu = Suu_seg
+                Syy = Syy_seg
+                Syu = Syu_seg
+            else:
+                Suu += Suu_seg
+                Syy += Syy_seg
+                Syu += Syu_seg
+
+            count += 1
+
+        if count == 0:
+            QMessageBox.warning(self, "Error", "Failed to segment data.")
+            return
+
+        # Average
+        Suu /= count
+        Syy /= count
+        Syu /= count
+
+        freqs = np.fft.rfftfreq(nperseg, d=dt)
+
+        # -----------------------------------
+        # Transfer function + coherence
+        # -----------------------------------
+        eps = 1e-12
+        H = Syu / (Suu + eps)
+
+        coherence = np.abs(Syu)**2 / (Suu * Syy + eps)
+
+        mag = 20 * np.log10(np.abs(H))
+
+        phase = np.angle(H, deg=True)
+
+        # Force real (critical for pyqtgraph)
+        mag = np.real(mag)
+        phase = np.real(phase)
+        coherence = np.real(coherence)
+
+        # -----------------------------------
+        # Mask bad frequencies
+        # -----------------------------------
+        # Reject low excitation or low coherence
+        valid = (np.abs(Suu) > 1e-8) & (coherence > 0.3) & (freqs > 0)
+
+        freqs = freqs[valid]
+        mag = mag[valid]
+        phase = phase[valid]
+        coherence = coherence[valid]
+
+        if len(freqs) < 5:
+            QMessageBox.warning(self, "Warning", "Low coherence — results may be unreliable.")
+        
+        # -----------------------------------
+        # Create plots
+        # -----------------------------------
+        bode_win = pg.GraphicsLayoutWidget(title=f"Bode Plot {plot_idx+1}")
+        self.fft_windows.append(bode_win)
+
+        mag_plot = bode_win.addPlot(title="Magnitude (dB)")
+        mag_plot.showGrid(x=True, y=True)
+
+        bode_win.nextRow()
+
+        phase_plot = bode_win.addPlot(title="Phase (deg)")
+        phase_plot.showGrid(x=True, y=True)
+
+        bode_win.nextRow()
+
+        coh_plot = bode_win.addPlot(title="Coherence")
+        coh_plot.showGrid(x=True, y=True)
+
+        # Log frequency axis
+        mag_plot.setLogMode(x=True, y=False)
+        phase_plot.setLogMode(x=True, y=False)
+        coh_plot.setLogMode(x=True, y=False)
+        phase_plot.setXLink(mag_plot)
+        coh_plot.setXLink(mag_plot)
+
+        # Plot
+        mag_plot.plot(freqs, mag, name="Magnitude", pen=pg.mkPen((50, 100, 255), width=2))
+        phase_plot.plot(freqs, phase, name="Phase", pen=pg.mkPen((0, 255, 0), width=2))
+        coh_plot.plot(freqs, coherence, name="Coherence", pen=pg.mkPen((255, 0, 0), width=2))
+
+        # Labels
+        mag_plot.setLabel('left', 'Magnitude', units='dB')
+        mag_plot.setLabel('bottom', 'Frequency', units='Hz')
+
+        phase_plot.setLabel('left', 'Phase', units='deg')
+        phase_plot.setLabel('bottom', 'Frequency', units='Hz')
+
+        coh_plot.setLabel('left', 'Coherence')
+        coh_plot.setLabel('bottom', 'Frequency', units='Hz')
+
+        bode_win.show()
 
     # -----------------------------
     # Save/Load Plot Sets

@@ -1,6 +1,6 @@
 # PlotDeck
 
-- Import a .csv file with rows of time-series data. The first row must contain variable names for each row. Separate/group variavles with '.' and this tool will automatically group items for easier navigation through variables.
+- Import a .csv file with rows of time-series data. The first row must contain variable names for each row. Separate/group variables with '.' and this tool will automatically group items for easier navigation through variables.
 
 - Select an x-axis variable for all plots. Then select y-axis variables to throw up on each sub plot.
 

@@ -1,0 +1,16 @@
+{
+  "derived_data_columns": [
+    {
+      "name": "seconds",
+      "expression": "LoopManager.loop_start_time_us / 1e6"
+    },
+    {
+      "name": "rc_norm_test",
+      "expression": "(RCRX.ch1_pwm - 1500) / 500"
+    },
+    {
+      "name": "RCRX.sum_test",
+      "expression": "RCRX.ch1_pwm + RCRX.ch2_pwm"
+    }
+  ]
+}

@@ -291,17 +291,67 @@ class LogViewer(QtWidgets.QMainWindow):
 
         self.df = new_df
 
-        # create seconds variable if available
-        if "LoopManager.loop_start_time_us" in self.df.columns:
-            self.df["seconds"] = self.df["LoopManager.loop_start_time_us"] / 1e6
+        # =========================
+        # LOAD DERIVED COLUMN DEFS
+        # =========================
+        try:
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            config_path = os.path.join(base_dir, "userDerivedFields.json")
 
-        # populate x-axis dropdown
+            if os.path.exists(config_path):
+                with open(config_path, "r") as f:
+                    config = json.load(f)
+
+                derived_list = config.get("derived_data_columns", [])
+
+                # Build safe evaluation context
+                # Replace dots with underscores for eval compatibility
+                df_eval = self.df.copy()
+                col_map = {}
+                for col in df_eval.columns:
+                    safe_col = col.replace('.', '_')
+                    col_map[col] = safe_col
+                    df_eval.rename(columns={col: safe_col}, inplace=True)
+
+                for item in derived_list:
+                    name = item.get("name")
+                    expr = item.get("expression")
+
+                    if not name or not expr:
+                        continue
+
+                    try:
+                        # Convert expression to safe column names
+                        expr_safe = expr
+                        for orig, safe in col_map.items():
+                            expr_safe = expr_safe.replace(orig, safe)
+
+                        # Evaluate
+                        result = df_eval.eval(expr_safe)
+
+                        # Only assign if successful
+                        self.df[name] = result
+
+                    except Exception:
+                        print("Problem creating user derived data column: ", name)
+                        # Gracefully skip bad expressions / missing variables
+                        continue
+
+        except Exception:
+            pass  # fully silent fail (your call if you want logging)
+
+        # =========================
+        # X DROPDOWN
+        # =========================
         self.x_dropdown.blockSignals(True)
         self.x_dropdown.clear()
+
         if "seconds" in self.df.columns:
             self.x_dropdown.addItem("seconds")
+
         for col in self.df.columns:
             self.x_dropdown.addItem(col)
+
         self.x_dropdown.blockSignals(False)
 
         # build hierarchical tree based on arbitrary '.' nesting

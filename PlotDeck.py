@@ -43,8 +43,8 @@ class PlotDeck(QtWidgets.QMainWindow):
         control_bar.addWidget(self.x_dropdown)
 
         # toggle cursor crosshar visibility
-        self.cursor_enabled = True
-        self.cursor_toggle = QtWidgets.QPushButton("Cursor: ON")
+        self.cursor_enabled = False
+        self.cursor_toggle = QtWidgets.QPushButton("Toggle Cursor ON")
         self.cursor_toggle.setCheckable(True)
         self.cursor_toggle.setChecked(True)
         self.cursor_toggle.clicked.connect(self.toggle_cursor)
@@ -722,7 +722,7 @@ class PlotDeck(QtWidgets.QMainWindow):
 
     def toggle_cursor(self):
         self.cursor_enabled = self.cursor_toggle.isChecked()
-        self.cursor_toggle.setText(f"Cursor: {'ON' if self.cursor_enabled else 'OFF'}")
+        self.cursor_toggle.setText(f"Toggle Cursor {'OFF' if self.cursor_enabled else 'ON'}")
 
         for plot in self.plots:
             if hasattr(plot, "_cursor"):

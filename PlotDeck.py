@@ -50,6 +50,7 @@ class PlotDeck(QtWidgets.QMainWindow):
         self.cursor_toggle.clicked.connect(self.toggle_cursor)
         control_bar.addWidget(self.cursor_toggle)
         self.cursor_idx = None
+        self.cursor_label = None
 
         # Save/load plot set buttons
         self.load_plotset_button = QtWidgets.QPushButton("Load Plot Set")
@@ -632,18 +633,16 @@ class PlotDeck(QtWidgets.QMainWindow):
         vLine = pg.InfiniteLine(angle=90, movable=False)
         plot.addItem(vLine, ignoreBounds=True)
 
-        # Only create one shared label (still follows cursor)
-        if plot_idx == 0:
-            label = pg.TextItem(anchor=(0, 1), border=pg.mkPen('k'), fill=pg.mkBrush(20,20,20,220))
-            plot.addItem(label)
-            self.cursor_label = label
-            self.cursor_label.setZValue(100)
-        else:
-            label = None
+        self.cursor_label = pg.TextItem(anchor=(0, 1), border=pg.mkPen('k'), fill=pg.mkBrush(20,20,20,220))
+        self.cursor_label.setZValue(100)
 
         def mouse_moved(evt):
             if not getattr(self, "cursor_enabled", True):
                 return
+            
+            for pl in self.plots:
+                pl.removeItem(self.cursor_label)
+            plot.addItem(self.cursor_label)
 
             pos = evt[0]
             if not plot.sceneBoundingRect().contains(pos):
@@ -719,7 +718,7 @@ class PlotDeck(QtWidgets.QMainWindow):
                 self.cursor_label.setZValue(100)
 
         proxy = pg.SignalProxy(plot.scene().sigMouseMoved, rateLimit=60, slot=mouse_moved)
-        plot._cursor = (vLine, None, label, proxy)
+        plot._cursor = (vLine, None, self.cursor_label, proxy)
 
     def toggle_cursor(self):
         self.cursor_enabled = self.cursor_toggle.isChecked()

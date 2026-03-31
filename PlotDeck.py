@@ -1,4 +1,5 @@
 import sys
+import argparse
 import pandas as pd
 import numpy as np
 from PyQt5 import QtWidgets, QtCore
@@ -10,8 +11,9 @@ from PyQt5.QtGui import QPixmap, QPainter
 
 class PlotDeck(QtWidgets.QMainWindow):
 
-    def __init__(self):
+    def __init__(self, split_mode="."):
         super().__init__()
+        self.split_mode = split_mode
 
         self.setWindowTitle("PlotDeck")
         self.resize(1800, 950)
@@ -573,7 +575,14 @@ class PlotDeck(QtWidgets.QMainWindow):
             if '.' not in col:
                 standalone.append(col)
                 continue
-            parts = col.split('.')
+
+            if self.split_mode == '.':
+                 parts = col.split('.')
+            elif self.split_mode == '_1':
+                parts = col.split('_', 1)
+            elif self.split_mode == '_2':
+                parts = col.split('_', 2)    
+
             d = tree_struct
             for p in parts:
                 d = d.setdefault(p, {})
@@ -856,7 +865,19 @@ class PlotDeck(QtWidgets.QMainWindow):
 # -----------------------------
 # Run app
 # -----------------------------
+parser = argparse.ArgumentParser(description="PlotDeck")
+
+parser.add_argument(
+    "-s",
+    "--split-mode",
+    choices=[".", "_1", "_2"],
+    default=".",
+    help="How to split variable names into tree structure for display organization."
+)
+
+args = parser.parse_args()
+
 app = QtWidgets.QApplication(sys.argv)
-viewer = PlotDeck()
+viewer = PlotDeck(split_mode=args.split_mode)
 viewer.show()
 sys.exit(app.exec_())

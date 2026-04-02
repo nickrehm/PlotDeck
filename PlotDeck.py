@@ -567,12 +567,15 @@ class PlotDeck(QtWidgets.QMainWindow):
 
         self.x_dropdown.blockSignals(False)
 
-        # build hierarchical tree based on arbitrary '.' nesting
+        # build hierarchical tree based on arbitrary '.' or '_' nesting
         tree_struct = {}
         standalone = []
 
         for col in self.df.columns:
-            if '.' not in col:
+            if self.split_mode == '.' and '.' not in col:
+                standalone.append(col)
+                continue
+            elif "_" not in col:
                 standalone.append(col)
                 continue
 
@@ -581,7 +584,12 @@ class PlotDeck(QtWidgets.QMainWindow):
             elif self.split_mode == '_1':
                 parts = col.split('_', 1)
             elif self.split_mode == '_2':
-                parts = col.split('_', 2)    
+                parts = col.split('_', 2)
+            elif self.split_mode == '_3':
+                parts = col.split('_', 3)
+            elif self.split_mode == '_4':
+                parts = col.split('_', 4)
+            #LOLLLLLLLLLLLLLLLLLLLLLLLLLLL
 
             d = tree_struct
             for p in parts:
@@ -870,7 +878,7 @@ parser = argparse.ArgumentParser(description="PlotDeck")
 parser.add_argument(
     "-s",
     "--split-mode",
-    choices=[".", "_1", "_2"],
+    choices=[".", "_1", "_2", "_3", "_4"],
     default=".",
     help="How to split variable names into tree structure for display organization."
 )

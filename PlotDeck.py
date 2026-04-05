@@ -575,7 +575,7 @@ class PlotDeck(QtWidgets.QMainWindow):
             if self.split_mode == '.' and '.' not in col:
                 standalone.append(col)
                 continue
-            elif "_" not in col:
+            elif self.split_mode != '.' and "_" not in col:
                 standalone.append(col)
                 continue
 

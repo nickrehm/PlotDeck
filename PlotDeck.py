@@ -477,11 +477,18 @@ class PlotDeck(QtWidgets.QMainWindow):
     # Load CSV
     # -----------------------------
     def load_csv(self):
+        # use last directory if it exists, otherwise default to home
+        start_dir = getattr(self, "last_dir", "")
+        
+
         path, _ = QtWidgets.QFileDialog.getOpenFileName(
-            self, "Select CSV", "", "CSV Files (*.csv)")
+            self, "Select CSV", start_dir, "CSV Files (*.csv)")
 
         if not path:
             return
+        
+        # save directory for next time
+        self.last_dir = os.path.dirname(path)
 
         # store current checked items per tree, filtered by columns in new CSV
         checked_items_per_tree = []
